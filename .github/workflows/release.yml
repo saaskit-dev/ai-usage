@@ -83,9 +83,18 @@ jobs:
           files: dist/*.tar.gz
           generate_release_notes: true
 
+      - name: Generate App Token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: saaskit-dev
+          repositories: homebrew-tap
+
       - name: Update Homebrew Tap
         run: |
-          git clone https://x-access-token:${{ secrets.TAP_TOKEN }}@github.com/saaskit-dev/homebrew-tap.git tap-repo
+          git clone https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/saaskit-dev/homebrew-tap.git tap-repo
           cd tap-repo
 
           # Update formula
