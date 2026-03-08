@@ -4,11 +4,8 @@
 class AiUsage < Formula
   homepage "https://github.com/saaskit-dev/ai-usage"
   url "https://github.com/saaskit-dev/ai-usage.git"
-  homepage "https://github.com/kilingzhang/ai-usage"
-  url "https://github.com/kilingzhang/ai-usage.git"
   version "v0.1.0"
   license "MIT"
-  revision 1
 
   depends_on "go" => :build
 
@@ -37,7 +34,7 @@ class AiUsage < Formula
         #{HOMEBREW_PREFIX}/etc/ai-usage.yaml
 
       To enable auto-start on macOS:
-        sudo ai-usage daemon install
+        ai-usage daemon install
 
       To enable auto-start on Linux:
         sudo ai-usage daemon install
