@@ -21,6 +21,7 @@ import (
 	claudeprovider "github.com/kilingzhang/ai-usage/internal/provider/claude"
 	copilotprovider "github.com/kilingzhang/ai-usage/internal/provider/copilot"
 	cursorprovider "github.com/kilingzhang/ai-usage/internal/provider/cursor"
+	"github.com/kilingzhang/ai-usage/internal/watcher"
 	"github.com/spf13/cobra"
 )
 
@@ -47,8 +48,8 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 		Use:   "ai-usage",
 		Short: "AI usage monitoring daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			// Create context with signal handling (including SIGHUP for config reload)
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
+			// Create context with signal handling
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 			defer stop()
 
 			cfg, err := config.Load(configPath)
@@ -120,6 +121,26 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 				}
 			}()
 
+			// Shared reload logic for both SIGHUP and file watcher
+			doReload := func() {
+				if err := cfg.Reload(configPath); err != nil {
+					logger.Warn("config reload failed", "error", err)
+					return
+				}
+				logger.Info("config reloaded")
+
+				// Reload notifiers
+				notifyMgr.Reload(logger, cfg.Notify.AppriseURLs)
+
+				// Reload monitor rules
+				mon.SetRules(cfg.Notify.Rules)
+
+				// Update data file
+				if cfg.Monitor.DataFile != "" {
+					mon.SetDataFile(cfg.Monitor.DataFile)
+				}
+			}
+
 			// SIGHUP handler for config hot reload
 			sighupCh := make(chan os.Signal, 1)
 			signal.Notify(sighupCh, syscall.SIGHUP)
@@ -133,26 +154,26 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 					case <-ctx.Done():
 						return
 					case <-sighupCh:
-						// Reload config
-						if err := cfg.Reload(configPath); err != nil {
-							logger.Warn("config reload failed", "error", err)
-							continue
-						}
-						logger.Info("config reloaded")
-
-						// Reload notifiers
-						notifyMgr.Reload(logger, cfg.Notify.AppriseURLs)
-
-						// Reload monitor rules
-						mon.SetRules(cfg.Notify.Rules)
-
-						// Update data file
-						if cfg.Monitor.DataFile != "" {
-							mon.SetDataFile(cfg.Monitor.DataFile)
-						}
+						doReload()
 					}
 				}
 			}()
+
+			// File watcher for automatic config reload
+			watchPath := configPath
+			if watchPath == "" {
+				watchPath = config.GetConfigPath()
+			}
+			if watchPath != "" {
+				cw := watcher.New(logger, watchPath, doReload, 500*time.Millisecond)
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					cw.Run(ctx)
+				}()
+			} else {
+				logger.Warn("no config file found, file watcher disabled")
+			}
 
 			logger.Info("daemon started", "addr", cfg.Server.Addr, "interval", probeInterval)
 
