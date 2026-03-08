@@ -85,14 +85,10 @@ jobs:
 
       - name: Update Homebrew Tap
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.TAP_DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-          git clone git@github.com:saaskit-dev/homebrew-tap.git tap-repo
+          git clone https://x-access-token:${{ secrets.TAP_TOKEN }}@github.com/saaskit-dev/homebrew-tap.git tap-repo
           cd tap-repo
 
+          # Update formula
           sed -i 's/VERSION_PLACEHOLDER/${{ inputs.version }}/g' Formula/ai-usage.rb
           sed -i 's/SHA256_MACOS_ARM64_PLACEHOLDER/${{ steps.sha256.outputs.macos_arm64 }}/g' Formula/ai-usage.rb
           sed -i 's/SHA256_MACOS_AMD64_PLACEHOLDER/${{ steps.sha256.outputs.macos_amd64 }}/g' Formula/ai-usage.rb
