@@ -80,6 +80,21 @@ install_binary() {
 install_via_homebrew() {
     log_info "Installing via Homebrew..."
     
+    # Check if local formula exists
+    if [ -f "./homebrew/ai-usage.rb" ]; then
+        log_info "Installing from local formula..."
+        brew install ./homebrew/ai-usage.rb
+    else
+        log_info "Adding tap and installing..."
+        brew tap saaskit-dev/ai-usage
+        brew install ai-usage
+    fi
+    
+    log_info "Installed via Homebrew!"
+}
+install_via_homebrew() {
+    log_info "Installing via Homebrew..."
+    
     # Check if formula exists locally
     if [ -f "./homebrew/ai-usage.rb" ]; then
         brew install ./homebrew/ai-usage.rb
