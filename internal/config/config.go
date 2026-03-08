@@ -25,14 +25,14 @@ type MonitorConfig struct {
 }
 
 type NotifyConfig struct {
-	AppriseURLs []string    `yaml:"apprise_urls"`
+	AppriseURLs []string     `yaml:"apprise_urls"`
 	Rules       []NotifyRule `yaml:"rules"`
 }
 
 type NotifyRule struct {
-	Event     string `yaml:"event"`     // threshold, depleted, probe_error, reset_soon, status_change
-	Threshold float64 `yaml:"threshold"` // for event=threshold: notify when any quota below this %
-	Before    string `yaml:"before"`    // for event=reset_soon: duration before reset (e.g. "10m")
+	Event     string   `yaml:"event"`     // threshold, depleted, probe_error, reset_soon, status_change
+	Threshold float64  `yaml:"threshold"` // for event=threshold: notify when any quota below this %
+	Before    string   `yaml:"before"`    // for event=reset_soon: duration before reset (e.g. "10m")
 	Providers []string `yaml:"providers"` // optional: filter by provider names (empty = all)
 }
 
@@ -117,4 +117,54 @@ func Load(path string) (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// Reload reloads the config from the same file path
+func (c *Config) Reload(path string) error {
+	if path == "" {
+		// Find config path using the same logic as Load
+		paths := []string{
+			"config.yaml",
+			"config.yml",
+			"ai-usage.yaml",
+			"ai-usage.yml",
+			filepath.Join(os.Getenv("HOME"), ".config", "ai-usage", "config.yaml"),
+			filepath.Join(os.Getenv("HOME"), ".ai-usage.yaml"),
+		}
+		for _, p := range paths {
+			if _, err := os.Stat(p); err == nil {
+				path = p
+				break
+			}
+		}
+	}
+
+	if path == "" {
+		return nil // No config file, use defaults
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+
+	return yaml.Unmarshal(data, c)
+}
+
+// GetConfigPath returns the current config file path
+func GetConfigPath() string {
+	paths := []string{
+		"config.yaml",
+		"config.yml",
+		"ai-usage.yaml",
+		"ai-usage.yml",
+		filepath.Join(os.Getenv("HOME"), ".config", "ai-usage", "config.yaml"),
+		filepath.Join(os.Getenv("HOME"), ".ai-usage.yaml"),
+	}
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return ""
 }

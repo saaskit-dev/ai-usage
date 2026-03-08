@@ -40,7 +40,6 @@ type Event struct {
 }
 
 // providerLabel returns a human-readable provider identifier from the event's Usage.
-// Examples: "Claude (user@example.com)", "Claude (~/.claude-max/)", "Copilot"
 func (e Event) providerLabel() string {
 	name := e.Usage.Provider
 	if len(name) > 0 {
@@ -62,21 +61,21 @@ func (e Event) quotasSummary() string {
 	}
 	var sb strings.Builder
 	for _, q := range e.Usage.Quotas {
-		icon := "\u2705"
+		icon := "✅"
 		switch q.CalculateStatus() {
 		case provider.StatusWarning:
-			icon = "\u26a0\ufe0f"
+			icon = "⚠️"
 		case provider.StatusCritical:
-			icon = "\U0001f534"
+			icon = "🔴"
 		case provider.StatusDepleted:
-			icon = "\U0001f6ab"
+			icon = "🟠"
 		}
 		line := fmt.Sprintf("%s **%s**: %.0f%%", icon, q.Type, q.PercentRemaining)
 		if q.Used > 0 || q.Limit > 0 {
 			line += fmt.Sprintf(" (%d/%d)", q.Used, q.Limit)
 		}
 		if q.ResetText != "" {
-			line += fmt.Sprintf(" \u00b7 %s", q.ResetText)
+			line += fmt.Sprintf(" · %s", q.ResetText)
 		}
 		sb.WriteString(line + "  \n")
 	}
@@ -89,57 +88,57 @@ func (e Event) FormatMessage() (title, body string) {
 
 	switch e.Type {
 	case EventThreshold:
-		title = fmt.Sprintf("\u26a0\ufe0f %s \u7528\u91cf\u544a\u8b66", label)
-		body = fmt.Sprintf("## \u4f4e\u7528\u91cf\u9884\u8b66\n\n"+
-			"**\u6700\u4f4e\u914d\u989d**: %.1f%%\n\n"+
-			"### \u914d\u989d\u8be6\u60c5\n%s\n"+
+		title = fmt.Sprintf("⚠️ %s 用量告警", label)
+		body = fmt.Sprintf("## 低用量警告\n\n"+
+			"**最低配额**: %.1f%%\n\n"+
+			"### 配额详情\n%s\n"+
 			"> %s\n\n"+
-			"---\n_\U0001f551 %s_",
+			"---\n_⏱ %s_",
 			e.Usage.LowestPercent(),
 			e.quotasSummary(),
 			e.Message,
 			e.Timestamp.Format("2006-01-02 15:04:05"),
 		)
 	case EventDepleted:
-		title = fmt.Sprintf("\U0001f6ab %s \u914d\u989d\u8017\u5c3d", label)
-		body = fmt.Sprintf("## \u914d\u989d\u5df2\u7528\u5c3d\n\n"+
-			"### \u914d\u989d\u8be6\u60c5\n%s\n"+
-			"---\n_\U0001f551 %s_",
+		title = fmt.Sprintf("🟠 %s 配额耗尽", label)
+		body = fmt.Sprintf("## 配额已用尽\n\n"+
+			"### 配额详情\n%s\n"+
+			"---\n_⏱ %s_",
 			e.quotasSummary(),
 			e.Timestamp.Format("2006-01-02 15:04:05"),
 		)
 	case EventProbeError:
-		title = fmt.Sprintf("\u274c %s \u63a2\u6d4b\u5931\u8d25", label)
-		body = fmt.Sprintf("## \u63a2\u6d4b\u5f02\u5e38\n\n"+
-			"**\u9519\u8bef\u4fe1\u606f**: `%s`\n\n"+
-			"---\n_\U0001f551 %s_",
+		title = fmt.Sprintf("❌ %s 探测失败", label)
+		body = fmt.Sprintf("## 探测异常\n\n"+
+			"**错误信息**: `%s`\n\n"+
+			"---\n_⏱ %s_",
 			e.Usage.Error,
 			e.Timestamp.Format("2006-01-02 15:04:05"),
 		)
 	case EventResetSoon:
-		title = fmt.Sprintf("\U0001f504 %s \u5373\u5c06\u91cd\u7f6e", label)
-		body = fmt.Sprintf("## \u914d\u989d\u5373\u5c06\u91cd\u7f6e\n\n"+
+		title = fmt.Sprintf("🔄 %s 即将重置", label)
+		body = fmt.Sprintf("## 配额即将重置\n\n"+
 			"> %s\n\n"+
-			"### \u5f53\u524d\u914d\u989d\n%s\n"+
-			"---\n_\U0001f551 %s_",
+			"### 当前配额\n%s\n"+
+			"---\n_⏱ %s_",
 			e.Message,
 			e.quotasSummary(),
 			e.Timestamp.Format("2006-01-02 15:04:05"),
 		)
 	case EventStatusChange, EventCritical, EventWarning:
-		statusIcon := "\u2139\ufe0f"
+		statusIcon := "ℹ️"
 		if e.NewStatus == provider.StatusCritical {
-			statusIcon = "\U0001f534"
+			statusIcon = "🔴"
 		} else if e.NewStatus == provider.StatusWarning {
-			statusIcon = "\u26a0\ufe0f"
+			statusIcon = "⚠️"
 		} else if e.NewStatus == provider.StatusHealthy {
-			statusIcon = "\u2705"
+			statusIcon = "✅"
 		}
-		title = fmt.Sprintf("%s %s \u72b6\u6001\u53d8\u66f4", statusIcon, label)
-		body = fmt.Sprintf("## \u72b6\u6001\u53d8\u66f4\n\n"+
-			"`%s` \u2192 `%s`\n\n"+
-			"### \u914d\u989d\u8be6\u60c5\n%s\n"+
-			"---\n_\U0001f551 %s_",
+		title = fmt.Sprintf("%s %s 状态变更", statusIcon, label)
+		body = fmt.Sprintf("## 状态变更\n\n"+
+			"`%s` → `%s`\n\n"+
+			"### 配额详情\n%s\n"+
+			"---\n_⏱ %s_",
 			e.OldStatus,
 			e.NewStatus,
 			e.quotasSummary(),
@@ -154,8 +153,8 @@ func (e Event) FormatMessage() (title, body string) {
 			body = e.Message
 		}
 	default:
-		title = fmt.Sprintf("\U0001f4e2 %s: %s", label, e.Type)
-		body = fmt.Sprintf("### \u914d\u989d\u8be6\u60c5\n%s\n---\n_\U0001f551 %s_",
+		title = fmt.Sprintf("🔔 %s: %s", label, e.Type)
+		body = fmt.Sprintf("### 配额详情\n%s\n---\n_⏱ %s_",
 			e.quotasSummary(),
 			e.Timestamp.Format("2006-01-02 15:04:05"),
 		)
@@ -183,6 +182,15 @@ func (m *Manager) AddNotifier(n Notifier) {
 
 func (m *Manager) HasNotifiers() bool {
 	return len(m.notifiers) > 0
+}
+
+// Reload replaces all notifiers with new ones based on the provided URLs
+func (m *Manager) Reload(logger *slog.Logger, urls []string) {
+	m.logger = logger
+	m.notifiers = nil
+	if len(urls) > 0 {
+		m.notifiers = append(m.notifiers, NewAppriseNotifier("apprise", urls))
+	}
 }
 
 func (m *Manager) Notify(ctx context.Context, event Event) error {
@@ -246,8 +254,6 @@ func (m *Manager) sendWithRetry(ctx context.Context, n Notifier, event Event) er
 }
 
 // AppriseNotifier sends notifications via Apprise CLI or direct HTTP.
-// Supports all Apprise URL schemes: schan://, discord://, wecombot://, tgram://,
-// json://, jsons://, http://, https://, etc.
 type AppriseNotifier struct {
 	name    string
 	urls    []string
@@ -344,7 +350,6 @@ func (n *AppriseNotifier) sendHTTPDirect(ctx context.Context, url, title, body s
 }
 
 // convertAppriseURL converts known Apprise URL schemes to real HTTP endpoints
-// for direct HTTP sending when the apprise CLI is not installed.
 func convertAppriseURL(url string) string {
 	if strings.HasPrefix(url, "schan://") {
 		token := strings.TrimPrefix(url, "schan://")

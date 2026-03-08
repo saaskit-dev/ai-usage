@@ -47,7 +47,8 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 		Use:   "ai-usage",
 		Short: "AI usage monitoring daemon",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+			// Create context with signal handling (including SIGHUP for config reload)
+			ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 			defer stop()
 
 			cfg, err := config.Load(configPath)
@@ -116,6 +117,40 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 				defer wg.Done()
 				if err := server.Run(ctx); err != nil && !errors.Is(err, context.Canceled) && !errors.Is(err, http.ErrServerClosed) {
 					errCh <- err
+				}
+			}()
+
+			// SIGHUP handler for config hot reload
+			sighupCh := make(chan os.Signal, 1)
+			signal.Notify(sighupCh, syscall.SIGHUP)
+			defer signal.Stop(sighupCh)
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case <-ctx.Done():
+						return
+					case <-sighupCh:
+						// Reload config
+						if err := cfg.Reload(configPath); err != nil {
+							logger.Warn("config reload failed", "error", err)
+							continue
+						}
+						logger.Info("config reloaded")
+
+						// Reload notifiers
+						notifyMgr.Reload(logger, cfg.Notify.AppriseURLs)
+
+						// Reload monitor rules
+						mon.SetRules(cfg.Notify.Rules)
+
+						// Update data file
+						if cfg.Monitor.DataFile != "" {
+							mon.SetDataFile(cfg.Monitor.DataFile)
+						}
+					}
 				}
 			}()
 
