@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilingzhang/ai-usage/internal/provider"
+	"github.com/saaskit-dev/ai-usage/internal/provider"
 	_ "github.com/mattn/go-sqlite3"
 )
 

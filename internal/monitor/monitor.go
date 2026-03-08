@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kilingzhang/ai-usage/internal/config"
-	"github.com/kilingzhang/ai-usage/internal/notify"
-	"github.com/kilingzhang/ai-usage/internal/provider"
+	"github.com/saaskit-dev/ai-usage/internal/config"
+	"github.com/saaskit-dev/ai-usage/internal/notify"
+	"github.com/saaskit-dev/ai-usage/internal/provider"
 )
 
 // ProviderHealth tracks probe health for a single provider.

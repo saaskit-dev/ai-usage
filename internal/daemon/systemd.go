@@ -8,7 +8,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kilingzhang/ai-usage/internal/config"
+	"github.com/saaskit-dev/ai-usage/internal/config"
 )
 
 const (

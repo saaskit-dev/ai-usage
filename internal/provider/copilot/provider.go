@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kilingzhang/ai-usage/internal/provider"
+	"github.com/saaskit-dev/ai-usage/internal/provider"
 )
 
 type Config struct {

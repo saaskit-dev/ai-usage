@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/kilingzhang/ai-usage/internal/monitor"
-	"github.com/kilingzhang/ai-usage/internal/notify"
-	"github.com/kilingzhang/ai-usage/internal/provider"
+	"github.com/saaskit-dev/ai-usage/internal/monitor"
+	"github.com/saaskit-dev/ai-usage/internal/notify"
+	"github.com/saaskit-dev/ai-usage/internal/provider"
 )
 
 type Server struct {

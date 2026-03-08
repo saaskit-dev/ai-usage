@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kilingzhang/ai-usage/internal/config"
+	"github.com/saaskit-dev/ai-usage/internal/config"
 )
 
 // Platform 返回当前操作系统
