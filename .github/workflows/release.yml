@@ -98,5 +98,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/ai-usage.rb
-          git commit -m "bump: ai-usage ${{ inputs.version }}"
+          git commit -m "bump: ai-usage ${{ inputs.version }}" || echo "No changes to commit"
           git push
+        continue-on-error: true
+
+      - name: Manual tap update reminder
+        if: failure()
+        run: |
+          echo "::warning::Failed to auto-update homebrew tap. Please update manually:"
+          echo "  1. Clone homebrew-tap repo"
+          echo "  2. Update Formula/ai-usage.rb with:"
+          echo "     - version: ${{ inputs.version }}"
+          echo "     - SHA256s from the release artifacts"
