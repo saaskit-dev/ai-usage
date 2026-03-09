@@ -54,10 +54,10 @@ func (e Event) providerLabel() string {
 	return name
 }
 
-// quotasSummary builds a Markdown list of all quotas with status indicators.
+// quotasSummary builds a compact summary of all quotas.
 func (e Event) quotasSummary() string {
 	if len(e.Usage.Quotas) == 0 {
-		return "_No quota data_\n"
+		return "*无配额数据*"
 	}
 	var sb strings.Builder
 	for _, q := range e.Usage.Quotas {
@@ -77,7 +77,7 @@ func (e Event) quotasSummary() string {
 		if q.ResetText != "" {
 			line += fmt.Sprintf(" · %s", q.ResetText)
 		}
-		sb.WriteString(line + "  \n")
+		sb.WriteString(line + "\n")
 	}
 	return sb.String()
 }
@@ -85,45 +85,34 @@ func (e Event) quotasSummary() string {
 // FormatMessage returns a Markdown-formatted notification message.
 func (e Event) FormatMessage() (title, body string) {
 	label := e.providerLabel()
+	timeStr := e.Timestamp.Format("01-02 15:04")
 
 	switch e.Type {
 	case EventThreshold:
-		title = fmt.Sprintf("⚠️ %s 用量告警", label)
-		body = fmt.Sprintf("## 低用量警告\n\n"+
-			"**最低配额**: %.1f%%\n\n"+
-			"### 配额详情\n%s\n"+
-			"> %s\n\n"+
-			"---\n_⏱ %s_",
-			e.Usage.LowestPercent(),
+		title = fmt.Sprintf("⚠️ %s 低用量告警 (%.0f%%)", label, e.Usage.LowestPercent())
+		body = fmt.Sprintf("%s\n\n> %s\n\n_%s_",
 			e.quotasSummary(),
 			e.Message,
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			timeStr,
 		)
 	case EventDepleted:
-		title = fmt.Sprintf("🟠 %s 配额耗尽", label)
-		body = fmt.Sprintf("## 配额已用尽\n\n"+
-			"### 配额详情\n%s\n"+
-			"---\n_⏱ %s_",
+		title = fmt.Sprintf("🔴 %s 配额耗尽", label)
+		body = fmt.Sprintf("%s\n\n_%s_",
 			e.quotasSummary(),
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			timeStr,
 		)
 	case EventProbeError:
 		title = fmt.Sprintf("❌ %s 探测失败", label)
-		body = fmt.Sprintf("## 探测异常\n\n"+
-			"**错误信息**: `%s`\n\n"+
-			"---\n_⏱ %s_",
+		body = fmt.Sprintf("```\n%s\n```\n\n_%s_",
 			e.Usage.Error,
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			timeStr,
 		)
 	case EventResetSoon:
 		title = fmt.Sprintf("🔄 %s 即将重置", label)
-		body = fmt.Sprintf("## 配额即将重置\n\n"+
-			"> %s\n\n"+
-			"### 当前配额\n%s\n"+
-			"---\n_⏱ %s_",
-			e.Message,
+		body = fmt.Sprintf("%s\n\n> %s\n\n_%s_",
 			e.quotasSummary(),
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			e.Message,
+			timeStr,
 		)
 	case EventStatusChange, EventCritical, EventWarning:
 		statusIcon := "ℹ️"
@@ -134,15 +123,10 @@ func (e Event) FormatMessage() (title, body string) {
 		} else if e.NewStatus == provider.StatusHealthy {
 			statusIcon = "✅"
 		}
-		title = fmt.Sprintf("%s %s 状态变更", statusIcon, label)
-		body = fmt.Sprintf("## 状态变更\n\n"+
-			"`%s` → `%s`\n\n"+
-			"### 配额详情\n%s\n"+
-			"---\n_⏱ %s_",
-			e.OldStatus,
-			e.NewStatus,
+		title = fmt.Sprintf("%s %s %s → %s", statusIcon, label, e.OldStatus, e.NewStatus)
+		body = fmt.Sprintf("%s\n\n_%s_",
 			e.quotasSummary(),
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			timeStr,
 		)
 	case EventManual:
 		parts := strings.SplitN(e.Message, "\n", 2)
@@ -153,10 +137,10 @@ func (e Event) FormatMessage() (title, body string) {
 			body = e.Message
 		}
 	default:
-		title = fmt.Sprintf("🔔 %s: %s", label, e.Type)
-		body = fmt.Sprintf("### 配额详情\n%s\n---\n_⏱ %s_",
+		title = fmt.Sprintf("🔔 %s %s", label, e.Type)
+		body = fmt.Sprintf("%s\n\n_%s_",
 			e.quotasSummary(),
-			e.Timestamp.Format("2006-01-02 15:04:05"),
+			timeStr,
 		)
 	}
 	return
