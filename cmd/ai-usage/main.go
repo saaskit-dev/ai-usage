@@ -218,32 +218,38 @@ func newStatusCmd() *cobra.Command {
 			out, err := exec.Command("brew", "services", "list").Output()
 			if err != nil {
 				fmt.Println("Service: Unable to check (brew not available)")
-				return
-			}
-
-			// 格式: Name       Status  User  File
-			//       ai-usage   started dev   ~/Library/LaunchAgents/...
-			lines := strings.Split(string(out), "\n")
-			for _, line := range lines {
-				if strings.HasPrefix(line, "ai-usage") {
-					fields := strings.Fields(line)
-					if len(fields) >= 2 {
-						status := fields[1]
-						switch status {
-						case "started":
-							fmt.Println("Service: Running")
-						case "stopped", "none":
-							fmt.Println("Service: Stopped")
-						case "error":
-							fmt.Println("Service: Error")
-						default:
-							fmt.Println("Service:", status)
+			} else {
+				// 格式: Name       Status  User  File
+				//       ai-usage   started dev   ~/Library/LaunchAgents/...
+				lines := strings.Split(string(out), "\n")
+				for _, line := range lines {
+					if strings.HasPrefix(line, "ai-usage") {
+						fields := strings.Fields(line)
+						if len(fields) >= 2 {
+							status := fields[1]
+							switch status {
+							case "started":
+								fmt.Println("Service: Running")
+							case "stopped", "none":
+								fmt.Println("Service: Stopped")
+							case "error":
+								fmt.Println("Service: Error")
+							default:
+								fmt.Println("Service:", status)
+							}
 						}
+						break
 					}
-					return
 				}
 			}
-			fmt.Println("Service: Not installed")
+			fmt.Println()
+
+			// 显示 API 端点
+			fmt.Println("API Endpoints (default port 18000):")
+			fmt.Println("  curl http://localhost:18000/healthz  # Health check")
+			fmt.Println("  curl http://localhost:18000/usage    # Usage data")
+			fmt.Println("  curl http://localhost:18000/config   # Current config")
+			fmt.Println("  curl http://localhost:18000/notify   # Notification status")
 		},
 	}
 }
