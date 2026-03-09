@@ -57,17 +57,29 @@ type CursorConfig struct {
 	Token   string `yaml:"token"`
 }
 
+// HomebrewPrefix returns the Homebrew prefix path
+func HomebrewPrefix() string {
+	if prefix := os.Getenv("HOMEBREW_PREFIX"); prefix != "" {
+		return prefix
+	}
+	// Default for Apple Silicon
+	if _, err := os.Stat("/opt/homebrew"); err == nil {
+		return "/opt/homebrew"
+	}
+	// Intel Mac fallback
+	return "/usr/local"
+}
+
 func Default() *Config {
-	home, _ := os.UserHomeDir()
-	dataFile := filepath.Join(home, ".local", "share", "ai-usage", "usage.json")
+	prefix := HomebrewPrefix()
 
 	return &Config{
 		Server: ServerConfig{
-			Addr: ":8080",
+			Addr: ":18000",
 		},
 		Monitor: MonitorConfig{
-			Interval: "60s",
-			DataFile: dataFile,
+			Interval: "300s",
+			DataFile: filepath.Join(prefix, "var", "ai-usage", "usage.json"),
 		},
 		Notify: NotifyConfig{
 			Rules: []NotifyRule{
@@ -77,8 +89,8 @@ func Default() *Config {
 		},
 		Providers: ProvidersConfig{
 			Claude:  ClaudeConfig{Enabled: true},
-			Copilot: CopilotConfig{Enabled: true},
-			Cursor:  CursorConfig{Enabled: true},
+			Copilot: CopilotConfig{Enabled: false},
+			Cursor:  CursorConfig{Enabled: false},
 		},
 	}
 }
@@ -87,12 +99,26 @@ func (c *Config) Interval() (time.Duration, error) {
 	return time.ParseDuration(c.Monitor.Interval)
 }
 
+// GetConfigPath returns the config file path
+func GetConfigPath() string {
+	return filepath.Join(HomebrewPrefix(), "etc", "ai-usage.yaml")
+}
+
+// GetLogPath returns the log file path
+func GetLogPath() string {
+	return filepath.Join(HomebrewPrefix(), "var", "log", "ai-usage.log")
+}
+
+// GetDataPath returns the data file path
+func GetDataPath() string {
+	return filepath.Join(HomebrewPrefix(), "var", "ai-usage", "usage.json")
+}
+
 func Load(path string) (*Config, error) {
 	cfg := Default()
 
 	if path == "" {
-		home, _ := os.UserHomeDir()
-		path = filepath.Join(home, ".config", "ai-usage", "config.yaml")
+		path = GetConfigPath()
 	}
 
 	data, err := os.ReadFile(path)
@@ -110,8 +136,7 @@ func Load(path string) (*Config, error) {
 // Reload reloads the config from the same file path
 func (c *Config) Reload(path string) error {
 	if path == "" {
-		home, _ := os.UserHomeDir()
-		path = filepath.Join(home, ".config", "ai-usage", "config.yaml")
+		path = GetConfigPath()
 	}
 
 	data, err := os.ReadFile(path)
@@ -120,10 +145,4 @@ func (c *Config) Reload(path string) error {
 	}
 
 	return yaml.Unmarshal(data, c)
-}
-
-// GetConfigPath returns the current config file path
-func GetConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "ai-usage", "config.yaml")
 }

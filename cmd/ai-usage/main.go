@@ -7,14 +7,15 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/saaskit-dev/ai-usage/internal/api"
 	"github.com/saaskit-dev/ai-usage/internal/config"
-	"github.com/saaskit-dev/ai-usage/internal/daemon"
 	"github.com/saaskit-dev/ai-usage/internal/monitor"
 	"github.com/saaskit-dev/ai-usage/internal/notify"
 	"github.com/saaskit-dev/ai-usage/internal/provider"
@@ -92,7 +93,7 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 
 			probeInterval, _ := time.ParseDuration(cfg.Monitor.Interval)
 			if probeInterval <= 0 {
-				probeInterval = 60 * time.Second
+				probeInterval = 300 * time.Second
 			}
 
 			mon := monitor.New(logger, registry, probeInterval)
@@ -190,159 +191,56 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVarP(&addr, "addr", "a", ":8080", "api listen address")
-	cmd.Flags().DurationVarP(&interval, "interval", "i", 60*time.Second, "provider probe interval")
+	cmd.Flags().StringVarP(&addr, "addr", "a", ":18000", "api listen address")
+	cmd.Flags().DurationVarP(&interval, "interval", "i", 300*time.Second, "provider probe interval")
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	cmd.Flags().StringArrayVarP(&appriseURLs, "apprise", "n", nil, "apprise notification urls (can be repeated, e.g. schan://key, discord://id/token)")
 
-	// 添加 daemon 子命令
-	cmd.AddCommand(newDaemonCmd(logger))
+	// 添加 status 子命令
+	cmd.AddCommand(newStatusCmd())
 
 	return cmd
 }
 
-// newDaemonCmd 创建 daemon 管理命令
-func newDaemonCmd(logger *slog.Logger) *cobra.Command {
-	var configPath string
-	var binaryPath string
-
-	cmd := &cobra.Command{
-		Use:   "daemon",
-		Short: "Manage ai-usage daemon",
-	}
-
-	// install - 安装开机自启
-	installCmd := &cobra.Command{
-		Use:   "install",
-		Short: "Install and enable auto-start (launchd/systemd)",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			platform := daemon.Platform()
-			logger.Info("Installing daemon", "platform", platform)
-
-			installer := daemon.NewInstaller(binaryPath)
-			if installer == nil {
-				return fmt.Errorf("unsupported platform: %s", platform)
-			}
-
-			var cfg *config.Config
-			if configPath != "" {
-				var err error
-				cfg, err = config.Load(configPath)
-				if err != nil {
-					return fmt.Errorf("load config: %w", err)
-				}
-			} else {
-				cfg = config.Default()
-			}
-
-			if err := installer.Install(cfg); err != nil {
-				return fmt.Errorf("install failed: %w", err)
-			}
-
-			logger.Info("Daemon installed successfully", "platform", platform)
-			return nil
-		},
-	}
-	installCmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
-	installCmd.Flags().StringVar(&binaryPath, "binary", "", "path to ai-usage binary (default: current binary)")
-
-	// uninstall - 卸载开机自启
-	uninstallCmd := &cobra.Command{
-		Use:   "uninstall",
-		Short: "Uninstall and disable auto-start",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			platform := daemon.Platform()
-			logger.Info("Uninstalling daemon", "platform", platform)
-
-			installer := daemon.NewInstaller(binaryPath)
-			if installer == nil {
-				return fmt.Errorf("unsupported platform: %s", platform)
-			}
-
-			if err := installer.Uninstall(); err != nil {
-				return fmt.Errorf("uninstall failed: %w", err)
-			}
-
-			logger.Info("Daemon uninstalled successfully")
-			return nil
-		},
-	}
-
-	// start - 启动守护进程
-	startCmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start the daemon",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			installer := daemon.NewInstaller(binaryPath)
-			if err := installer.Start(); err != nil {
-				return fmt.Errorf("start failed: %w", err)
-			}
-			logger.Info("Daemon started")
-			return nil
-		},
-	}
-
-	// stop - 停止守护进程
-	stopCmd := &cobra.Command{
-		Use:   "stop",
-		Short: "Stop the daemon",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			installer := daemon.NewInstaller(binaryPath)
-			if err := installer.Stop(); err != nil {
-				return fmt.Errorf("stop failed: %w", err)
-			}
-			logger.Info("Daemon stopped")
-			return nil
-		},
-	}
-
-	// restart - 重启守护进程
-	restartCmd := &cobra.Command{
-		Use:   "restart",
-		Short: "Restart the daemon",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			installer := daemon.NewInstaller(binaryPath)
-			if err := installer.Stop(); err != nil {
-				return fmt.Errorf("stop failed: %w", err)
-			}
-			time.Sleep(500 * time.Millisecond)
-			if err := installer.Start(); err != nil {
-				return fmt.Errorf("start failed: %w", err)
-			}
-			logger.Info("Daemon restarted")
-			return nil
-		},
-	}
-
-	// status - 查看守护进程状态
-	statusCmd := &cobra.Command{
+// newStatusCmd 创建 status 命令
+func newStatusCmd() *cobra.Command {
+	return &cobra.Command{
 		Use:   "status",
 		Short: "Show daemon status",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			installer := daemon.NewInstaller(binaryPath)
-			status, err := installer.Status()
-			if err != nil {
-				return fmt.Errorf("status failed: %w", err)
-			}
-
+		Run: func(cmd *cobra.Command, args []string) {
 			// 显示路径信息
 			fmt.Println("Paths:")
 			fmt.Printf("  Config: %s\n", config.GetConfigPath())
-			fmt.Printf("  Log:    %s\n", daemon.GetLogPath())
-			fmt.Printf("  Data:   %s\n", daemon.GetDataPath())
+			fmt.Printf("  Log:    %s\n", config.GetLogPath())
+			fmt.Printf("  Data:   %s\n", config.GetDataPath())
 			fmt.Println()
 
-			logger.Info("Daemon status", "status", status)
-			return nil
+			// 检查 brew services 状态
+			out, err := exec.Command("brew", "services", "list").Output()
+			if err != nil {
+				fmt.Println("Service: Unable to check (brew not available)")
+				return
+			}
+
+			lines := strings.Split(string(out), "\n")
+			for _, line := range lines {
+				if strings.HasPrefix(line, "ai-usage") {
+					fields := strings.Fields(line)
+					if len(fields) >= 2 {
+						status := fields[1]
+						if status == "started" {
+							fmt.Println("Service: Running")
+							if len(fields) >= 3 {
+								fmt.Printf("  PID: %s\n", fields[2])
+							}
+						} else {
+							fmt.Println("Service:", status)
+						}
+					}
+					return
+				}
+			}
+			fmt.Println("Service: Not installed")
 		},
 	}
-
-	cmd.AddCommand(installCmd)
-	cmd.AddCommand(uninstallCmd)
-	cmd.AddCommand(startCmd)
-	cmd.AddCommand(stopCmd)
-	cmd.AddCommand(restartCmd)
-	cmd.AddCommand(statusCmd)
-
-	return cmd
 }
