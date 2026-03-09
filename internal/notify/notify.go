@@ -54,12 +54,12 @@ func (e Event) providerLabel() string {
 	return name
 }
 
-// quotasSummary builds a compact summary of all quotas.
+// quotasSummary builds a compact summary of all quotas (Markdown format).
 func (e Event) quotasSummary() string {
 	if len(e.Usage.Quotas) == 0 {
-		return "*无配额数据*"
+		return "无配额数据"
 	}
-	var sb strings.Builder
+	var lines []string
 	for _, q := range e.Usage.Quotas {
 		icon := "✅"
 		switch q.CalculateStatus() {
@@ -77,61 +77,112 @@ func (e Event) quotasSummary() string {
 		if q.ResetText != "" {
 			line += fmt.Sprintf(" · %s", q.ResetText)
 		}
-		sb.WriteString(line + "\n")
+		lines = append(lines, line)
 	}
-	return sb.String()
+	return strings.Join(lines, "\n\n")
 }
 
-// FormatMessage returns a Markdown-formatted notification message.
+// accountInfo returns account information string for the event.
+func (e Event) accountInfo() string {
+	var parts []string
+	if e.Usage.Email != "" {
+		parts = append(parts, fmt.Sprintf("📧 账户: %s", e.Usage.Email))
+	}
+	if e.Usage.Tier != "" {
+		parts = append(parts, fmt.Sprintf("🏷 计划: %s", e.Usage.Tier))
+	}
+	if e.Usage.Path != "" {
+		parts = append(parts, fmt.Sprintf("📁 路径: %s", e.Usage.Path))
+	}
+	return strings.Join(parts, "\n\n")
+}
+
+// FormatMessage returns a plain text notification message.
 func (e Event) FormatMessage() (title, body string) {
 	label := e.providerLabel()
 	timeStr := e.Timestamp.Format("01-02 15:04")
+	accountInfo := e.accountInfo()
 
 	switch e.Type {
 	case EventThreshold:
 		title = fmt.Sprintf("⚠️ %s 低用量告警 (%.0f%%)", label, e.Usage.LowestPercent())
-		msg := e.quotasSummary()
-		if e.Message != "" {
-			msg += fmt.Sprintf("\n\n> %s", e.Message)
+		var sb strings.Builder
+		sb.WriteString("## 当前配额状态\n\n")
+		sb.WriteString(e.quotasSummary())
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
 		}
-		body = fmt.Sprintf("%s\n\n_%s_", msg, timeStr)
+		if e.Message != "" {
+			sb.WriteString(fmt.Sprintf("\n\n> 💡 %s", e.Message))
+		}
+		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
+		body = sb.String()
 
 	case EventDepleted:
 		title = fmt.Sprintf("🔴 %s 配额耗尽", label)
-		body = fmt.Sprintf("%s\n\n_%s_", e.quotasSummary(), timeStr)
+		var sb strings.Builder
+		sb.WriteString("## 🚨 配额已用完\n\n请等待重置或升级计划\n\n")
+		sb.WriteString(e.quotasSummary())
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
+		}
+		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
+		body = sb.String()
 
 	case EventProbeError:
 		title = fmt.Sprintf("❌ %s 探测失败", label)
-		// 显示账户信息
-		extra := ""
-		if e.Usage.Email != "" {
-			extra += fmt.Sprintf("\n📧 账户: %s", e.Usage.Email)
+		var sb strings.Builder
+		sb.WriteString("## 错误详情\n\n")
+		sb.WriteString(fmt.Sprintf("```\n%s\n```", e.Usage.Error))
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
 		}
-		if e.Usage.Tier != "" {
-			extra += fmt.Sprintf("\n🏷 计划: %s", e.Usage.Tier)
-		}
-		body = fmt.Sprintf("```\n%s\n```%s\n\n_%s_", e.Usage.Error, extra, timeStr)
+		sb.WriteString("\n\n💡 可能原因：Token 过期、网络问题或 API 限流")
+		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
+		body = sb.String()
+
 	case EventResetSoon:
 		title = fmt.Sprintf("🔄 %s 即将重置", label)
-		body = fmt.Sprintf("%s\n\n> %s\n\n_%s_",
-			e.quotasSummary(),
-			e.Message,
-			timeStr,
-		)
+		var sb strings.Builder
+		sb.WriteString("## 配额即将自动重置\n\n")
+		sb.WriteString(e.quotasSummary())
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
+		}
+		if e.Message != "" {
+			sb.WriteString(fmt.Sprintf("\n\n⏰ %s", e.Message))
+		}
+		sb.WriteString(fmt.Sprintf("\n\n检测时间: %s", timeStr))
+		body = sb.String()
+
 	case EventStatusChange, EventCritical, EventWarning:
 		statusIcon := "ℹ️"
+		statusText := "状态变更"
 		if e.NewStatus == provider.StatusCritical {
 			statusIcon = "🔴"
+			statusText = "配额严重不足"
 		} else if e.NewStatus == provider.StatusWarning {
 			statusIcon = "⚠️"
+			statusText = "配额偏低"
 		} else if e.NewStatus == provider.StatusHealthy {
 			statusIcon = "✅"
+			statusText = "配额正常"
 		}
-		title = fmt.Sprintf("%s %s %s → %s", statusIcon, label, e.OldStatus, e.NewStatus)
-		body = fmt.Sprintf("%s\n\n_%s_",
-			e.quotasSummary(),
-			timeStr,
-		)
+		title = fmt.Sprintf("%s %s：%s → %s", statusIcon, label, e.OldStatus, e.NewStatus)
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("## %s\n\n", statusText))
+		sb.WriteString(e.quotasSummary())
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
+		}
+		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
+		body = sb.String()
+
 	case EventManual:
 		parts := strings.SplitN(e.Message, "\n", 2)
 		title = parts[0]
@@ -142,10 +193,14 @@ func (e Event) FormatMessage() (title, body string) {
 		}
 	default:
 		title = fmt.Sprintf("🔔 %s %s", label, e.Type)
-		body = fmt.Sprintf("%s\n\n_%s_",
-			e.quotasSummary(),
-			timeStr,
-		)
+		var sb strings.Builder
+		sb.WriteString(e.quotasSummary())
+		if accountInfo != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(accountInfo)
+		}
+		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
+		body = sb.String()
 	}
 	return
 }
@@ -313,7 +368,14 @@ func (n *AppriseNotifier) sendHTTP(ctx context.Context, title, body string) erro
 }
 
 func (n *AppriseNotifier) sendHTTPDirect(ctx context.Context, url, title, body string) error {
-	payload := map[string]string{"title": title, "body": body}
+	// Server酱 使用 "desp" 字段，其他服务使用 "body"
+	payload := map[string]string{"title": title}
+	if strings.Contains(url, "sctapi.ftqq.com") {
+		payload["desp"] = body
+	} else {
+		payload["body"] = body
+	}
+
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return fmt.Errorf("marshal payload: %w", err)

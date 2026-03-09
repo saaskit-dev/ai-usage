@@ -35,6 +35,7 @@ func NewServer(logger *slog.Logger, mon *monitor.Monitor, notifier *notify.Manag
 	mux.HandleFunc("/usage", s.handleUsage)
 	mux.HandleFunc("/config", s.handleConfig)
 	mux.HandleFunc("/notify", s.handleNotify)
+	mux.HandleFunc("/notify/test", s.handleNotifyTest)
 	s.http = &http.Server{Addr: addr, Handler: mux}
 	return s
 }
@@ -197,4 +198,120 @@ func (s *Server) handleNotify(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+}
+
+// handleNotifyTest 发送测试通知，根据当前各 provider 状态发送对应类型的通知
+func (s *Server) handleNotifyTest(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	if s.notifier == nil || !s.notifier.HasNotifiers() {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "notifier not configured"})
+		return
+	}
+
+	usages := s.monitor.Latest()
+	var sent []string
+	var errors []string
+
+	for _, u := range usages {
+		label := u.Provider
+		if u.Email != "" {
+			label = fmt.Sprintf("%s (%s)", u.Provider, u.Email)
+		} else if u.Path != "" {
+			label = fmt.Sprintf("%s (%s)", u.Provider, u.Path)
+		}
+
+		// 1. 如果有错误，发送 probe_error 通知
+		if u.Error != "" {
+			event := notify.Event{
+				Type:      notify.EventProbeError,
+				Provider:  u.Provider,
+				Usage:     u,
+				Timestamp: time.Now(),
+			}
+			if err := s.notifier.Notify(r.Context(), event); err != nil {
+				errors = append(errors, fmt.Sprintf("%s probe_error: %v", label, err))
+			} else {
+				sent = append(sent, fmt.Sprintf("%s - 探测失败", label))
+			}
+			continue
+		}
+
+		// 2. 根据配额状态发送不同类型的通知
+		for _, q := range u.Quotas {
+			status := q.CalculateStatus()
+
+			// threshold 通知 (低于 50%)
+			if q.PercentRemaining < 50 {
+				event := notify.Event{
+					Type:      notify.EventThreshold,
+					Provider:  u.Provider,
+					Usage:     u,
+					Timestamp: time.Now(),
+					Message:   fmt.Sprintf("Quota dropped below 50%% (current: %.1f%%)", q.PercentRemaining),
+				}
+				if err := s.notifier.Notify(r.Context(), event); err != nil {
+					errors = append(errors, fmt.Sprintf("%s threshold: %v", label, err))
+				} else {
+					sent = append(sent, fmt.Sprintf("%s - 阈值告警 (%s: %.0f%%)", label, q.Type, q.PercentRemaining))
+				}
+			}
+
+			// 状态变更通知
+			eventType := notify.EventStatusChange
+			if status == provider.StatusDepleted {
+				eventType = notify.EventDepleted
+			} else if status == provider.StatusCritical {
+				eventType = notify.EventCritical
+			} else if status == provider.StatusWarning {
+				eventType = notify.EventWarning
+			}
+
+			if eventType != notify.EventStatusChange || status != provider.StatusHealthy {
+				event := notify.Event{
+					Type:      eventType,
+					Provider:  u.Provider,
+					Usage:     u,
+					OldStatus: provider.StatusHealthy,
+					NewStatus: status,
+					Timestamp: time.Now(),
+				}
+				if err := s.notifier.Notify(r.Context(), event); err != nil {
+					errors = append(errors, fmt.Sprintf("%s status_change: %v", label, err))
+				} else {
+					sent = append(sent, fmt.Sprintf("%s - 状态变更 → %s", label, status))
+				}
+			}
+
+			// reset_soon 通知 (如果有重置时间，模拟即将重置)
+			if !q.ResetTime.IsZero() {
+				event := notify.Event{
+					Type:      notify.EventResetSoon,
+					Provider:  u.Provider,
+					Usage:     u,
+					Timestamp: time.Now(),
+					Message:   fmt.Sprintf("Quota resets soon (at %s)", q.ResetTime.Format("2006-01-02 15:04")),
+				}
+				if err := s.notifier.Notify(r.Context(), event); err != nil {
+					errors = append(errors, fmt.Sprintf("%s reset_soon: %v", label, err))
+				} else {
+					sent = append(sent, fmt.Sprintf("%s - 即将重置 (%s)", label, q.Type))
+				}
+			}
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"sent":   sent,
+		"errors": errors,
+		"total":  len(sent),
+	})
 }
