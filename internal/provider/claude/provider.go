@@ -329,9 +329,19 @@ func (p *Provider) keychainServiceName() string {
 	if p.config.CredentialsPath == "" {
 		return "Claude Code-credentials"
 	}
-	absPath, err := filepath.Abs(p.config.CredentialsPath)
+
+	// 展开 ~ 到 home 目录
+	path := p.config.CredentialsPath
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, path[2:])
+		}
+	}
+
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		absPath = p.config.CredentialsPath
+		absPath = path
 	}
 	// 移除尾部斜杠
 	absPath = strings.TrimRight(absPath, "/")
