@@ -90,23 +90,27 @@ func (e Event) FormatMessage() (title, body string) {
 	switch e.Type {
 	case EventThreshold:
 		title = fmt.Sprintf("⚠️ %s 低用量告警 (%.0f%%)", label, e.Usage.LowestPercent())
-		body = fmt.Sprintf("%s\n\n> %s\n\n_%s_",
-			e.quotasSummary(),
-			e.Message,
-			timeStr,
-		)
+		msg := e.quotasSummary()
+		if e.Message != "" {
+			msg += fmt.Sprintf("\n\n> %s", e.Message)
+		}
+		body = fmt.Sprintf("%s\n\n_%s_", msg, timeStr)
+
 	case EventDepleted:
 		title = fmt.Sprintf("🔴 %s 配额耗尽", label)
-		body = fmt.Sprintf("%s\n\n_%s_",
-			e.quotasSummary(),
-			timeStr,
-		)
+		body = fmt.Sprintf("%s\n\n_%s_", e.quotasSummary(), timeStr)
+
 	case EventProbeError:
 		title = fmt.Sprintf("❌ %s 探测失败", label)
-		body = fmt.Sprintf("```\n%s\n```\n\n_%s_",
-			e.Usage.Error,
-			timeStr,
-		)
+		// 显示账户信息
+		extra := ""
+		if e.Usage.Email != "" {
+			extra += fmt.Sprintf("\n📧 账户: %s", e.Usage.Email)
+		}
+		if e.Usage.Tier != "" {
+			extra += fmt.Sprintf("\n🏷 计划: %s", e.Usage.Tier)
+		}
+		body = fmt.Sprintf("```\n%s\n```%s\n\n_%s_", e.Usage.Error, extra, timeStr)
 	case EventResetSoon:
 		title = fmt.Sprintf("🔄 %s 即将重置", label)
 		body = fmt.Sprintf("%s\n\n> %s\n\n_%s_",
