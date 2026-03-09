@@ -82,8 +82,13 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 				}
 			}
 
-			registry.Register(copilotprovider.NewProvider(copilotprovider.WithToken(cfg.Providers.Copilot.Token)))
-			registry.Register(cursorprovider.NewProvider(cursorprovider.WithToken(cfg.Providers.Cursor.Token)))
+			if cfg.Providers.Copilot.Enabled {
+				registry.Register(copilotprovider.NewProvider(copilotprovider.WithToken(cfg.Providers.Copilot.Token)))
+			}
+
+			if cfg.Providers.Cursor.Enabled {
+				registry.Register(cursorprovider.NewProvider(cursorprovider.WithToken(cfg.Providers.Cursor.Token)))
+			}
 
 			notifyMgr := notify.NewManager(logger)
 			if len(cfg.Notify.AppriseURLs) > 0 {
