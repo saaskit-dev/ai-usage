@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -50,19 +51,19 @@ func NewSystemdInstaller(binaryPath string) *SystemdInstaller {
 }
 
 func getCurrentUser() string {
-	user := os.Getenv("USER")
-	if user == "" {
-		return "root"
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
 	}
-	return user
+	return "root"
 }
 
 func getCurrentGroup() string {
-	group := os.Getenv("GROUP")
-	if group == "" {
-		return "root"
+	if u, err := user.Current(); err == nil {
+		if g, err := user.LookupGroupId(u.Gid); err == nil {
+			return g.Name
+		}
 	}
-	return group
+	return "root"
 }
 
 // systemdUnitTemplate systemd unit 文件模板

@@ -192,6 +192,19 @@ func EnsureLogDir() error {
 	return os.MkdirAll(dir, 0755)
 }
 
+// GetDataPath 获取数据文件路径
+func GetDataPath() string {
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".local", "share", "ai-usage", "usage.json")
+}
+
+// EnsureDataDir 确保数据目录存在
+func EnsureDataDir() error {
+	dataPath := GetDataPath()
+	dir := filepath.Dir(dataPath)
+	return os.MkdirAll(dir, 0755)
+}
+
 // Restart 重启守护进程
 func Restart(pid int) error {
 	if !IsRunning(pid) {

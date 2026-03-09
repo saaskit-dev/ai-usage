@@ -28,9 +28,6 @@ func NewProvider(opts ...func(*Config)) *Provider {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.Token == "" {
-		cfg.Token = os.Getenv("GITHUB_TOKEN")
-	}
 	if cfg.Username == "" {
 		if username := getGitHubUsername(cfg.Token); username != "" {
 			cfg.Username = username

@@ -319,7 +319,7 @@ func (p *Provider) loadTokenFromCredentials() (string, error) {
 		}
 	}
 
-	return os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"), nil
+	return "", nil
 }
 
 // keychainServiceName 返回 macOS Keychain 中的 service name

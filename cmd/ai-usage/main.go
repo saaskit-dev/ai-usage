@@ -324,6 +324,14 @@ func newDaemonCmd(logger *slog.Logger) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("status failed: %w", err)
 			}
+
+			// 显示路径信息
+			fmt.Println("Paths:")
+			fmt.Printf("  Config: %s\n", config.GetConfigPath())
+			fmt.Printf("  Log:    %s\n", daemon.GetLogPath())
+			fmt.Printf("  Data:   %s\n", daemon.GetDataPath())
+			fmt.Println()
+
 			logger.Info("Daemon status", "status", status)
 			return nil
 		},

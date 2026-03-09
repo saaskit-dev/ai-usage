@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/template"
 	"time"
 
@@ -197,11 +198,31 @@ func (i *LaunchdInstaller) Stop() error {
 
 // Status 获取服务状态
 func (i *LaunchdInstaller) Status() (string, error) {
-	output, err := RunCommand("launchctl", "list", "|", "grep", LaunchdLabel)
+	output, err := RunCommand("launchctl", "list", LaunchdLabel)
 	if err != nil {
 		return "Stopped", nil
 	}
-	return "Running: " + output, nil
+
+	// 解析输出，查找 PID
+	// 格式: "PID" = 12345;
+	if strings.Contains(output, `"PID" =`) {
+		// 提取 PID
+		for _, line := range strings.Split(output, "\n") {
+			if strings.Contains(line, `"PID" =`) {
+				// 格式: \t"PID" = 23642;
+				line = strings.TrimSpace(line)
+				line = strings.TrimPrefix(line, `"PID" = `)
+				line = strings.TrimSuffix(line, ";")
+				pid := strings.TrimSpace(line)
+				if pid != "" && pid != "0" {
+					return "Running (PID: " + pid + ")", nil
+				}
+			}
+		}
+		return "Running", nil
+	}
+
+	return "Stopped", nil
 }
 
 // IsInstalled 检查是否已安装

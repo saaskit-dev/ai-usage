@@ -31,9 +31,6 @@ func NewProvider(opts ...func(*Config)) *Provider {
 	for _, opt := range opts {
 		opt(&cfg)
 	}
-	if cfg.Token == "" {
-		cfg.Token = os.Getenv("CURSOR_TOKEN")
-	}
 	return &Provider{
 		config: cfg,
 		client: &http.Client{Timeout: 30 * time.Second},

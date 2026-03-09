@@ -58,12 +58,16 @@ type CursorConfig struct {
 }
 
 func Default() *Config {
+	home, _ := os.UserHomeDir()
+	dataFile := filepath.Join(home, ".local", "share", "ai-usage", "usage.json")
+
 	return &Config{
 		Server: ServerConfig{
 			Addr: ":8080",
 		},
 		Monitor: MonitorConfig{
 			Interval: "60s",
+			DataFile: dataFile,
 		},
 		Notify: NotifyConfig{
 			Rules: []NotifyRule{
@@ -87,24 +91,8 @@ func Load(path string) (*Config, error) {
 	cfg := Default()
 
 	if path == "" {
-		paths := []string{
-			"config.yaml",
-			"config.yml",
-			"ai-usage.yaml",
-			"ai-usage.yml",
-			filepath.Join(os.Getenv("HOME"), ".config", "ai-usage", "config.yaml"),
-			filepath.Join(os.Getenv("HOME"), ".ai-usage.yaml"),
-		}
-		for _, p := range paths {
-			if _, err := os.Stat(p); err == nil {
-				path = p
-				break
-			}
-		}
-	}
-
-	if path == "" {
-		return cfg, nil
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, ".config", "ai-usage", "config.yaml")
 	}
 
 	data, err := os.ReadFile(path)
@@ -122,25 +110,8 @@ func Load(path string) (*Config, error) {
 // Reload reloads the config from the same file path
 func (c *Config) Reload(path string) error {
 	if path == "" {
-		// Find config path using the same logic as Load
-		paths := []string{
-			"config.yaml",
-			"config.yml",
-			"ai-usage.yaml",
-			"ai-usage.yml",
-			filepath.Join(os.Getenv("HOME"), ".config", "ai-usage", "config.yaml"),
-			filepath.Join(os.Getenv("HOME"), ".ai-usage.yaml"),
-		}
-		for _, p := range paths {
-			if _, err := os.Stat(p); err == nil {
-				path = p
-				break
-			}
-		}
-	}
-
-	if path == "" {
-		return nil // No config file, use defaults
+		home, _ := os.UserHomeDir()
+		path = filepath.Join(home, ".config", "ai-usage", "config.yaml")
 	}
 
 	data, err := os.ReadFile(path)
@@ -153,18 +124,6 @@ func (c *Config) Reload(path string) error {
 
 // GetConfigPath returns the current config file path
 func GetConfigPath() string {
-	paths := []string{
-		"config.yaml",
-		"config.yml",
-		"ai-usage.yaml",
-		"ai-usage.yml",
-		filepath.Join(os.Getenv("HOME"), ".config", "ai-usage", "config.yaml"),
-		filepath.Join(os.Getenv("HOME"), ".ai-usage.yaml"),
-	}
-	for _, p := range paths {
-		if _, err := os.Stat(p); err == nil {
-			return p
-		}
-	}
-	return ""
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "ai-usage", "config.yaml")
 }

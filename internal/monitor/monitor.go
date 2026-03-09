@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 	"time"
@@ -158,6 +159,12 @@ func (m *Monitor) save() {
 
 	if err != nil {
 		m.logger.Warn("failed to marshal save data", "error", err)
+		return
+	}
+
+	// 确保目录存在
+	if err := os.MkdirAll(filepath.Dir(m.dataFile), 0755); err != nil {
+		m.logger.Warn("failed to create data directory", "error", err)
 		return
 	}
 
