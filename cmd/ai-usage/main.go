@@ -222,18 +222,22 @@ func newStatusCmd() *cobra.Command {
 				return
 			}
 
+			// 格式: Name       Status  User  File
+			//       ai-usage   started dev   ~/Library/LaunchAgents/...
 			lines := strings.Split(string(out), "\n")
 			for _, line := range lines {
 				if strings.HasPrefix(line, "ai-usage") {
 					fields := strings.Fields(line)
 					if len(fields) >= 2 {
 						status := fields[1]
-						if status == "started" {
+						switch status {
+						case "started":
 							fmt.Println("Service: Running")
-							if len(fields) >= 3 {
-								fmt.Printf("  PID: %s\n", fields[2])
-							}
-						} else {
+						case "stopped", "none":
+							fmt.Println("Service: Stopped")
+						case "error":
+							fmt.Println("Service: Error")
+						default:
 							fmt.Println("Service:", status)
 						}
 					}
