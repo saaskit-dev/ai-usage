@@ -55,11 +55,10 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 
 			cfg, err := config.Load(configPath)
 			if err != nil {
-				logger.Warn("config load failed, using defaults", "error", err)
-				cfg = config.Default()
-			} else {
-				logger.Info("config loaded", "data_file", cfg.Monitor.DataFile)
+				logger.Error("config load failed", "error", err)
+				return err
 			}
+			logger.Info("config loaded", "path", configPath)
 
 			if cmd.Flags().Changed("addr") {
 				cfg.Server.Addr = addr

@@ -123,6 +123,10 @@ func Load(path string) (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			// 配置文件不存在，使用默认配置
+			return cfg, nil
+		}
 		return nil, err
 	}
 
