@@ -1,4 +1,3 @@
-<!-- markdownlint-disable MD001 MD026 -->
 <div align="center">
 
 # AI Usage Monitor
@@ -7,217 +6,167 @@ Monitor AI service usage (Claude, Copilot, Cursor) with real-time metrics and no
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Go Version](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://github.com/saaskit-dev/ai-usage)
-[![Release](https://img.shields.io/github/v/release/saaskit-dev/ai-usage)](https://github.com/saaskit-dev/ai-usage/releases)
 
 </div>
 
 ## Features
 
-- **Multi-Provider Support**: Claude (API), Copilot, Cursor
-- **Real-time Monitoring**: Track quota usage in real-time
-- **REST API**: Built-in API server for programmatic access
-- **Notifications**: Apprise integration (Discord, Telegram, Slack, WeChat, etc.)
-- **Auto-Restart**: Process monitoring with automatic restart on failure
-- **Cross-Platform**: macOS & Linux support
-- **Auto-Start**: launchd (macOS) / systemd (Linux) integration
+- **Multi-Provider**: Claude, Copilot, Cursor
+- **Real-time Monitoring**: Track quota usage automatically
+- **REST API**: Built-in API server on port 18000
+- **Notifications**: Apprise integration (Discord, Telegram, ServerChan, etc.)
+- **Auto-Start**: Managed by Homebrew Services
 
-## Quick Start
+## Installation
 
-### Installation
-
-#### Homebrew (Recommended)
 ```bash
 brew tap saaskit-dev/tap
 brew install ai-usage
 ```
 
-#### Install Script
-```bash
-curl -sL https://raw.githubusercontent.com/saaskit-dev/ai-usage/main/install.sh | bash
-```
+安装后自动启动服务。
 
-#### Manual
-Download from [Releases](https://github.com/saaskit-dev/ai-usage/releases):
+## Commands
 
 ```bash
-# macOS
-curl -sL https://github.com/saaskit-dev/ai-usage/releases/latest/download/ai-usage-darwin-arm64.tar.gz | tar -xz
-sudo mv ai-usage /usr/local/bin/
+# 查看状态
+ai-usage status
 
-# Linux
-curl -sL https://github.com/saaskit-dev/ai-usage/releases/latest/download/ai-usage-linux-amd64.tar.gz | tar -xz
-sudo mv ai-usage /usr/local/bin/
+# 服务管理
+brew services start ai-usage
+brew services stop ai-usage
+brew services restart ai-usage
+
+# API 调用
+curl http://localhost:18000/usage
 ```
 
-### Configuration
+## Configuration
 
-1. Copy the example config:
-```bash
-mkdir -p ~/.config/ai-usage
-cp /usr/local/etc/ai-usage.example.yaml ~/.config/ai-usage/config.yaml
-# Or on Linux: cp ~/.local/share/ai-usage/config.yaml.example ~/.config/ai-usage/config.yaml
-```
+配置文件: `/opt/homebrew/etc/ai-usage.yaml`
 
-2. Edit the config:
-```bash
-vim ~/.config/ai-usage/config.yaml
-```
+默认配置（无需配置文件即可运行）：
+- 端口: `18000`
+- 间隔: `5min`
+- Provider: 只启用 Claude
 
-3. Run:
-```bash
-ai-usage
-```
-
-4. Enable auto-start:
-```bash
-ai-usage daemon install
-```
-
-### Configuration Reference
+完整配置示例：
 
 ```yaml
 server:
-  addr: ":8080"          # API server listen address
+  addr: ":18000"
 
 monitor:
-  interval: "60s"        # Probe interval
-  data_file: "./data/usage.json"
+  interval: "300s"
 
 notify:
   apprise_urls:
-    - "discord://webhook_id/webhook_token"
-    - "tgram://bot_token/chat_id"
-    - "schan://sendkey"
+    - "schan://your-sendkey"
   rules:
-    - event: depleted           # Alert when quota is fully depleted
-    - event: probe_error        # Alert when API probe fails
-    - event: threshold         # Alert when quota drops below threshold
-      threshold: 50
-    - event: threshold
-      threshold: 20
-    - event: reset_soon        # Alert before quota resets
-      before: "10m"
+    - event: depleted       # 配额耗尽
+    - event: probe_error    # 探测失败
 
 providers:
   claude:
     enabled: true
-    # paths:                   # Additional Claude credential paths
+    # paths:                # 额外的 Claude 凭证路径
     #   - ~/.claude-work/
   copilot:
-    enabled: true
-    token: "your-github-token"
+    enabled: false
+    token: "ghp_xxx"
   cursor:
-    enabled: true
-    token: "your-cursor-token"
+    enabled: false
+    token: "xxx"
 ```
 
-### API Endpoints
+## API Endpoints
 
 | Endpoint | Description |
 |----------|-------------|
-| `GET /` | Health check |
-| `GET /api/v1/usage` | Current usage for all providers |
-| `GET /api/v1/usage/claude` | Claude usage only |
-| `GET /api/v1/usage/copilot` | Copilot usage only |
-| `GET /api/v1/usage/cursor` | Cursor usage only |
-| `GET /api/v1/providers` | Provider status |
-| `GET /metrics` | Prometheus metrics |
+| `GET /healthz` | 健康检查 |
+| `GET /usage` | 所有 Provider 用量 |
+| `GET /config` | 当前配置 |
+| `GET /notify` | 通知状态 |
 
-Example:
 ```bash
-curl http://localhost:8080/api/v1/usage
+curl http://localhost:18000/healthz
+curl http://localhost:18000/usage
 ```
 
-Response:
+响应示例：
+
 ```json
 {
-  "claude": {
-    "email": "user@example.com",
-    "plan": "Pro",
-    "usage": 45.2,
-    "limit": 100,
-    "unit": "USD",
-    "reset_at": "2024-01-15T00:00:00Z"
-  },
-  "copilot": {
-    "plan": "Pro",
-    "usage": 1245,
-    "limit": 5000,
-    "unit": "requests"
-  },
-  "cursor": {
-    "usage": 8500,
-    "limit": 50000,
-    "unit": "requests"
-  }
+  "usage": [
+    {
+      "provider": "claude",
+      "email": "user@example.com",
+      "quotas": [
+        {
+          "type": "daily",
+          "percent_remaining": 75,
+          "used": 25,
+          "limit": 100,
+          "reset_text": "Resets in 6h"
+        }
+      ]
+    }
+  ],
+  "last_updated": "2024-01-15T10:00:00Z",
+  "ready": true
 }
-```
-
-## Usage
-
-```
-AI usage monitoring daemon
-
-Usage:
-  ai-usage [flags]
-  ai-usage [command]
-
-Available Commands:
-  daemon      Manage ai-usage daemon
-  help        Help about any command
-
-Flags:
-  -a, --addr string           API listen address (default ":8080")
-  -c, --config string         Config file path
-  -i, --interval duration     Provider probe interval (default 1m0s)
-  -n, --apprise stringArray  Notification URLs
-
-Daemon Commands:
-  ai-usage daemon install     Install and enable auto-start
-  ai-usage daemon uninstall   Uninstall and disable auto-start
-  ai-usage daemon start       Start the daemon
-  ai-usage daemon stop        Stop the daemon
-  ai-usage daemon restart     Restart the daemon
-  ai-usage daemon status      Show daemon status
 ```
 
 ## Notifications
 
-Supported notification channels via [Apprise](https://github.com/caronc/apprise):
+支持的通知渠道（通过 [Apprise](https://github.com/caronc/apprise)）：
 
 ```yaml
 notify:
   apprise_urls:
+    # ServerChan (微信)
+    - "schan://SCTxxxxx"
+
     # Discord
     - "discord://webhook_id/webhook_token"
 
     # Telegram
     - "tgram://bot_token/chat_id"
 
-    # Slack
-    - "slack://token_a/token_b/token_c"
-
-    # ServerChan (WeChat)
-    - "schan://SCTxxxxx"
-
-    # Custom Webhook
-    - "json://webhook.example.com/notify"
+    # 自定义 Webhook
+    - "jsons://webhook.example.com/notify"
 ```
 
-## Development
+通知规则：
 
-```bash
-# Clone
-git clone https://github.com/saaskit-dev/ai-usage.git
-cd ai-usage
-
-# Build
-go build -o bin/ai-usage ./cmd/ai-usage
-
-# Run
-./bin/ai-usage --config config.yaml
+```yaml
+rules:
+  - event: depleted           # 配额耗尽
+  - event: probe_error        # 探测失败
+  - event: threshold          # 低于阈值
+    threshold: 50
+  - event: reset_soon         # 即将重置
+    before: "10m"
 ```
+
+通知示例：
+
+```
+⚠️ Claude 低用量告警 (20%)
+✅ daily: 20% (40/50) · Resets in 2h
+> 配额不足，请注意使用
+
+_03-10 14:30_
+```
+
+## Paths
+
+| 文件 | 路径 |
+|------|------|
+| 配置 | `/opt/homebrew/etc/ai-usage.yaml` |
+| 日志 | `/opt/homebrew/var/log/ai-usage.log` |
+| 数据 | `/opt/homebrew/var/ai-usage/usage.json` |
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT License
