@@ -25,6 +25,7 @@ import (
 	cursorprovider "github.com/saaskit-dev/ai-usage/internal/provider/cursor"
 	"github.com/saaskit-dev/ai-usage/internal/watcher"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -206,6 +207,7 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 	cmd.AddCommand(newUsageCmd())
 	cmd.AddCommand(newHealthCmd())
 	cmd.AddCommand(newNotifyCmd())
+	cmd.AddCommand(newConfigCmd())
 
 	return cmd
 }
@@ -266,13 +268,20 @@ func newStatusCmd() *cobra.Command {
 // newUsageCmd 创建 usage 命令 - 直接获取用量数据
 func newUsageCmd() *cobra.Command {
 	var asJSON bool
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "usage",
 		Short: "Get current usage data",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// 构建 URL
+			url := "http://localhost:18000/usage"
+			if force {
+				url += "?force=true"
+			}
+
 			// 尝试从 API 获取
-			resp, err := http.Get("http://localhost:18000/usage")
+			resp, err := http.Get(url)
 			if err != nil {
 				return fmt.Errorf("failed to connect to API: %w (is the service running?)", err)
 			}
@@ -299,6 +308,9 @@ func newUsageCmd() *cobra.Command {
 			}
 
 			// 格式化输出
+			if force {
+				fmt.Println("🔄 Force refreshed\n")
+			}
 			fmt.Printf("Last Updated: %s\n\n", data.LastUpdated.Format("2006-01-02 15:04:05"))
 
 			for _, u := range data.Usage {
@@ -346,6 +358,7 @@ func newUsageCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&asJSON, "json", false, "output as JSON")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "force refresh from providers")
 
 	return cmd
 }
@@ -518,6 +531,186 @@ func newNotifyCmd() *cobra.Command {
 	sendCmd.Flags().StringVarP(&body, "body", "b", "", "notification body")
 
 	cmd.AddCommand(sendCmd)
+
+	return cmd
+}
+
+// newConfigCmd 创建 config 命令 - 配置管理
+func newConfigCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "config",
+		Short: "Configuration management",
+	}
+
+	// config show 子命令
+	cmd.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show current configuration",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load("")
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			data, err := yaml.Marshal(cfg)
+			if err != nil {
+				return fmt.Errorf("failed to marshal config: %w", err)
+			}
+
+			fmt.Printf("Config file: %s\n\n", config.GetConfigPath())
+			fmt.Println(string(data))
+			return nil
+		},
+	})
+
+	// config set 子命令
+	var (
+		setAddr       string
+	 setInterval   string
+		setApprise    []string
+		setClaudePath []string
+		setCopilot    string
+		setCursor     string
+		enableClaude  bool
+		enableCopilot bool
+		enableCursor  bool
+		disableClaude bool
+		disableCopilot bool
+		disableCursor bool
+	)
+
+	setCmd := &cobra.Command{
+		Use:   "set",
+		Short: "Set configuration values",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := config.Load("")
+			if err != nil {
+				return fmt.Errorf("failed to load config: %w", err)
+			}
+
+			changed := false
+
+			if setAddr != "" {
+				cfg.Server.Addr = setAddr
+				changed = true
+			}
+			if setInterval != "" {
+				cfg.Monitor.Interval = setInterval
+				changed = true
+			}
+			if len(setApprise) > 0 {
+				cfg.Notify.AppriseURLs = setApprise
+				changed = true
+			}
+			if len(setClaudePath) > 0 {
+				cfg.Providers.Claude.Paths = setClaudePath
+				changed = true
+			}
+			if setCopilot != "" {
+				cfg.Providers.Copilot.Token = setCopilot
+				cfg.Providers.Copilot.Enabled = true
+				changed = true
+			}
+			if setCursor != "" {
+				cfg.Providers.Cursor.Token = setCursor
+				cfg.Providers.Cursor.Enabled = true
+				changed = true
+			}
+			if enableClaude {
+				cfg.Providers.Claude.Enabled = true
+				changed = true
+			}
+			if enableCopilot {
+				cfg.Providers.Copilot.Enabled = true
+				changed = true
+			}
+			if enableCursor {
+				cfg.Providers.Cursor.Enabled = true
+				changed = true
+			}
+			if disableClaude {
+				cfg.Providers.Claude.Enabled = false
+				changed = true
+			}
+			if disableCopilot {
+				cfg.Providers.Copilot.Enabled = false
+				changed = true
+			}
+			if disableCursor {
+				cfg.Providers.Cursor.Enabled = false
+				changed = true
+			}
+
+			if !changed {
+				fmt.Println("No changes specified. Use flags to set values.")
+				fmt.Println("\nExamples:")
+				fmt.Println("  ai-usage config set --addr :9090")
+				fmt.Println("  ai-usage config set --interval 1m")
+				fmt.Println("  ai-usage config set --apprise schan://KEY")
+				fmt.Println("  ai-usage config set --enable-copilot --copilot-token ghp_xxx")
+				return nil
+			}
+
+			if err := cfg.Save(""); err != nil {
+				return fmt.Errorf("failed to save config: %w", err)
+			}
+
+			fmt.Println("✅ Configuration saved to", config.GetConfigPath())
+			fmt.Println("\nRestart service to apply changes:")
+			fmt.Println("  brew services restart ai-usage")
+
+			return nil
+		},
+	}
+
+	setCmd.Flags().StringVar(&setAddr, "addr", "", "API listen address (e.g. :9090)")
+	setCmd.Flags().StringVar(&setInterval, "interval", "", "Probe interval (e.g. 1m, 5m)")
+	setCmd.Flags().StringArrayVar(&setApprise, "apprise", nil, "Apprise notification URL (can be repeated)")
+	setCmd.Flags().StringArrayVar(&setClaudePath, "claude-path", nil, "Additional Claude credentials path")
+	setCmd.Flags().StringVar(&setCopilot, "copilot-token", "", "GitHub Copilot token")
+	setCmd.Flags().StringVar(&setCursor, "cursor-token", "", "Cursor token")
+	setCmd.Flags().BoolVar(&enableClaude, "enable-claude", false, "Enable Claude provider")
+	setCmd.Flags().BoolVar(&enableCopilot, "enable-copilot", false, "Enable Copilot provider")
+	setCmd.Flags().BoolVar(&enableCursor, "enable-cursor", false, "Enable Cursor provider")
+	setCmd.Flags().BoolVar(&disableClaude, "disable-claude", false, "Disable Claude provider")
+	setCmd.Flags().BoolVar(&disableCopilot, "disable-copilot", false, "Disable Copilot provider")
+	setCmd.Flags().BoolVar(&disableCursor, "disable-cursor", false, "Disable Cursor provider")
+
+	cmd.AddCommand(setCmd)
+
+	// config edit 子命令
+	cmd.AddCommand(&cobra.Command{
+		Use:   "edit",
+		Short: "Open config file in editor",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			editor := os.Getenv("EDITOR")
+			if editor == "" {
+				editor = "vim"
+			}
+
+			editCmd := exec.Command(editor, config.GetConfigPath())
+			editCmd.Stdin = os.Stdin
+			editCmd.Stdout = os.Stdout
+			editCmd.Stderr = os.Stderr
+
+			if err := editCmd.Run(); err != nil {
+				return fmt.Errorf("failed to open editor: %w", err)
+			}
+
+			fmt.Println("\nRestart service to apply changes:")
+			fmt.Println("  brew services restart ai-usage")
+			return nil
+		},
+	})
+
+	// config path 子命令
+	cmd.AddCommand(&cobra.Command{
+		Use:   "path",
+		Short: "Show config file path",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Println(config.GetConfigPath())
+		},
+	})
 
 	return cmd
 }

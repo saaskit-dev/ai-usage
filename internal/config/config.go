@@ -150,3 +150,22 @@ func (c *Config) Reload(path string) error {
 
 	return yaml.Unmarshal(data, c)
 }
+
+// Save saves the config to the specified path
+func (c *Config) Save(path string) error {
+	if path == "" {
+		path = GetConfigPath()
+	}
+
+	// 确保目录存在
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
+}
