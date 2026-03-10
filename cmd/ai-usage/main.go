@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -200,8 +201,11 @@ func newRootCmd(logger *slog.Logger) *cobra.Command {
 	cmd.Flags().StringVarP(&configPath, "config", "c", "", "config file path")
 	cmd.Flags().StringArrayVarP(&appriseURLs, "apprise", "n", nil, "apprise notification urls (can be repeated, e.g. schan://key, discord://id/token)")
 
-	// 添加 status 子命令
+	// 添加子命令
 	cmd.AddCommand(newStatusCmd())
+	cmd.AddCommand(newUsageCmd())
+	cmd.AddCommand(newHealthCmd())
+	cmd.AddCommand(newNotifyCmd())
 
 	return cmd
 }
@@ -257,4 +261,263 @@ func newStatusCmd() *cobra.Command {
 			fmt.Println("  curl http://localhost:18000/notify   # Notification status")
 		},
 	}
+}
+
+// newUsageCmd 创建 usage 命令 - 直接获取用量数据
+func newUsageCmd() *cobra.Command {
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "usage",
+		Short: "Get current usage data",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// 尝试从 API 获取
+			resp, err := http.Get("http://localhost:18000/usage")
+			if err != nil {
+				return fmt.Errorf("failed to connect to API: %w (is the service running?)", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != 200 {
+				return fmt.Errorf("API returned status %d", resp.StatusCode)
+			}
+
+			var data struct {
+				Usage       []provider.Usage `json:"usage"`
+				LastUpdated time.Time        `json:"last_updated"`
+				Ready       bool             `json:"ready"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+				return fmt.Errorf("failed to decode response: %w", err)
+			}
+
+			if asJSON {
+				enc := json.NewEncoder(os.Stdout)
+				enc.SetIndent("", "  ")
+				return enc.Encode(data)
+			}
+
+			// 格式化输出
+			fmt.Printf("Last Updated: %s\n\n", data.LastUpdated.Format("2006-01-02 15:04:05"))
+
+			for _, u := range data.Usage {
+				label := u.Provider
+				if u.Email != "" {
+					label = fmt.Sprintf("%s (%s)", u.Provider, u.Email)
+				} else if u.Path != "" {
+					label = fmt.Sprintf("%s (%s)", u.Provider, u.Path)
+				}
+
+				if u.Error != "" {
+					fmt.Printf("❌ %s\n", label)
+					fmt.Printf("   Error: %s\n\n", u.Error)
+					continue
+				}
+
+				fmt.Printf("✅ %s\n", label)
+				if u.Tier != "" {
+					fmt.Printf("   Plan: %s\n", u.Tier)
+				}
+				for _, q := range u.Quotas {
+					icon := "✅"
+					status := q.CalculateStatus()
+					if status == provider.StatusWarning {
+						icon = "⚠️"
+					} else if status == provider.StatusCritical {
+						icon = "🔴"
+					} else if status == provider.StatusDepleted {
+						icon = "🟠"
+					}
+					line := fmt.Sprintf("   %s %s: %.0f%%", icon, q.Type, q.PercentRemaining)
+					if q.Used > 0 || q.Limit > 0 {
+						line += fmt.Sprintf(" (%d/%d)", q.Used, q.Limit)
+					}
+					if q.ResetText != "" {
+						line += fmt.Sprintf(" · %s", q.ResetText)
+					}
+					fmt.Println(line)
+				}
+				fmt.Println()
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&asJSON, "json", false, "output as JSON")
+
+	return cmd
+}
+
+// newHealthCmd 创建 health 命令 - 健康检查
+func newHealthCmd() *cobra.Command {
+	var asJSON bool
+
+	cmd := &cobra.Command{
+		Use:   "health",
+		Short: "Check service health",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := http.Get("http://localhost:18000/healthz")
+			if err != nil {
+				return fmt.Errorf("service not responding: %w", err)
+			}
+			defer resp.Body.Close()
+
+			if asJSON {
+				_, err = os.Stdout.ReadFrom(resp.Body)
+				return err
+			}
+
+			var data struct {
+				Status    string `json:"status"`
+				Ready     bool   `json:"ready"`
+				Providers map[string]struct {
+					ConsecutiveFails int    `json:"consecutive_fails"`
+					LastError       string `json:"last_error,omitempty"`
+					LastSuccess     string `json:"last_success,omitempty"`
+				} `json:"providers"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+				return fmt.Errorf("failed to decode response: %w", err)
+			}
+
+			statusIcon := "✅"
+			if data.Status == "degraded" {
+				statusIcon = "⚠️"
+			} else if data.Status == "error" {
+				statusIcon = "🔴"
+			}
+
+			fmt.Printf("%s Service Status: %s\n\n", statusIcon, data.Status)
+			fmt.Printf("Ready: %v\n\n", data.Ready)
+
+			fmt.Println("Providers:")
+			for name, p := range data.Providers {
+				if p.ConsecutiveFails > 0 {
+					fmt.Printf("  ❌ %s: %d consecutive failures\n", name, p.ConsecutiveFails)
+					if p.LastError != "" {
+						fmt.Printf("     Error: %s\n", p.LastError)
+					}
+				} else {
+					fmt.Printf("  ✅ %s: healthy\n", name)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	cmd.Flags().BoolVar(&asJSON, "json", false, "output as JSON")
+
+	return cmd
+}
+
+// newNotifyCmd 创建 notify 命令 - 通知管理
+func newNotifyCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "notify",
+		Short: "Notification commands",
+	}
+
+	// notify status 子命令
+	cmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show notification status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := http.Get("http://localhost:18000/notify")
+			if err != nil {
+				return fmt.Errorf("service not responding: %w", err)
+			}
+			defer resp.Body.Close()
+
+			_, err = os.Stdout.ReadFrom(resp.Body)
+			return err
+		},
+	})
+
+	// notify test 子命令
+	cmd.AddCommand(&cobra.Command{
+		Use:   "test",
+		Short: "Send test notifications based on current status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			resp, err := http.Post("http://localhost:18000/notify/test", "application/json", nil)
+			if err != nil {
+				return fmt.Errorf("service not responding: %w", err)
+			}
+			defer resp.Body.Close()
+
+			var result struct {
+				Sent   []string `json:"sent"`
+				Errors []string `json:"errors"`
+				Total  int      `json:"total"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return fmt.Errorf("failed to decode response: %w", err)
+			}
+
+			if len(result.Sent) > 0 {
+				fmt.Println("Notifications sent:")
+				for _, s := range result.Sent {
+					fmt.Printf("  ✅ %s\n", s)
+				}
+			}
+
+			if len(result.Errors) > 0 {
+				fmt.Println("\nErrors:")
+				for _, e := range result.Errors {
+					fmt.Printf("  ❌ %s\n", e)
+				}
+			}
+
+			fmt.Printf("\nTotal: %d notifications\n", result.Total)
+
+			return nil
+		},
+	})
+
+	// notify send 子命令 - 发送自定义通知
+	var title, body string
+	sendCmd := &cobra.Command{
+		Use:   "send",
+		Short: "Send a custom notification",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if title == "" {
+				return fmt.Errorf("title is required (use -t)")
+			}
+
+			payload := map[string]string{"title": title, "body": body}
+			data, _ := json.Marshal(payload)
+
+			resp, err := http.Post("http://localhost:18000/notify", "application/json", strings.NewReader(string(data)))
+			if err != nil {
+				return fmt.Errorf("service not responding: %w", err)
+			}
+			defer resp.Body.Close()
+
+			var result struct {
+				Status string `json:"status"`
+				Error  string `json:"error,omitempty"`
+			}
+
+			if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+				return fmt.Errorf("failed to decode response: %w", err)
+			}
+
+			if result.Status == "sent" {
+				fmt.Println("✅ Notification sent")
+				return nil
+			}
+
+			return fmt.Errorf("failed to send: %s", result.Error)
+		},
+	}
+	sendCmd.Flags().StringVarP(&title, "title", "t", "", "notification title (required)")
+	sendCmd.Flags().StringVarP(&body, "body", "b", "", "notification body")
+
+	cmd.AddCommand(sendCmd)
+
+	return cmd
 }
