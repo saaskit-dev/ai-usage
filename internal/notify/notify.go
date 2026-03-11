@@ -140,10 +140,14 @@ func (e Event) FormatMessage() (title, body string) {
 			sb.WriteString("\n\n")
 			sb.WriteString(accountInfo)
 		}
+		// 添加当前配额状态（如果有）
+		if len(e.Usage.Quotas) > 0 {
+			sb.WriteString("\n\n## 当前配额状态\n\n")
+			sb.WriteString(e.quotasSummary())
+		}
 		sb.WriteString("\n\n💡 可能原因：Token 过期、网络问题或 API 限流")
 		sb.WriteString(fmt.Sprintf("\n\n⏰ %s", timeStr))
 		body = sb.String()
-
 	case EventResetSoon:
 		title = fmt.Sprintf("🔄 %s 即将重置", label)
 		var sb strings.Builder
